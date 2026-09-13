@@ -1,169 +1,310 @@
-/*
- * ghost-saver - A screen saver for Windows 11 designed to remove
- * ghosting/burn-in artifacts by cycling through colors at various
- * brightness levels.
- *
- * Build: g++ -o ghost-saver.scr main.cpp -mwindows -lgdi32
- */
-
 #include <windows.h>
-#include <cmath>
 
-static const int COLOR_PHASE_MS    = 10000;   // 10s per color
-static const int NUM_COLORS        = 6;       // R, G, B, C, M, Y
-static const int BLACK_DURATION_MS = 300000;  // 5 min black
-
-struct ColorPhase { unsigned char r, g, b; };
-
-static const ColorPhase baseColors[NUM_COLORS] = {
-    {255,   0,   0}, {  0, 255,   0}, {  0,   0, 255},
-    {  0, 255, 255}, {255,   0, 255}, {255, 255,   0},
+static const struct { BYTE r, g, b; } STOPS[9] = {
+    {  0,   0,   0 }, // black
+    {255,   0,   0 }, // red
+    {  0, 255,   0 }, // green
+    {  0,   0, 255 }, // blue
+    {255, 255,   0 }, // yellow
+    {  0, 255, 255 }, // cyan
+    {128,   0, 128 }, // purple
+    {255, 255, 255 }, // white
+    {  0,   0,   0 }, // black
 };
 
-static const float brightnessLevels[] = {0.3f, 0.5f, 0.7f, 0.85f, 1.0f};
-static const int NUM_BRIGHTNESS = 5;
+struct Cycle {
+    DWORD fadeMs[8];
+    DWORD holdMs[7];
+};
 
-static HWND g_hwnd = nullptr;
-static HBRUSH g_hBrush = nullptr;
+static const ULONGLONG BLACK_PHASE_MS = 30000;
 
-static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    switch (msg) {
-        case WM_CREATE: return 0;
-
-        case WM_PAINT: {
-            DWORD startTime = (DWORD)GetWindowLongPtr(hwnd, GWLP_USERDATA);
-            DWORD elapsed = GetTickCount() - startTime;
-            int totalColorDuration = COLOR_PHASE_MS * NUM_COLORS;
-            int fullCycleDuration = totalColorDuration + BLACK_DURATION_MS;
-
-            if (elapsed >= (DWORD)fullCycleDuration)
-                elapsed = elapsed % (DWORD)fullCycleDuration;
-
-            unsigned char r, g, b;
-
-            if (elapsed >= (DWORD)totalColorDuration) {
-                r = 0; g = 0; b = 0;
-            } else {
-                int colorIndex = (int)(elapsed / COLOR_PHASE_MS) % NUM_COLORS;
-                float progress = (float)elapsed / (float)totalColorDuration;
-                int brightnessIdx = (int)(progress * NUM_BRIGHTNESS) % NUM_BRIGHTNESS;
-                float brightness = brightnessLevels[brightnessIdx];
-                r = (unsigned char)(baseColors[colorIndex].r * brightness);
-                g = (unsigned char)(baseColors[colorIndex].g * brightness);
-                b = (unsigned char)(baseColors[colorIndex].b * brightness);
-            }
-
-            if (g_hBrush) DeleteObject(g_hBrush);
-            g_hBrush = CreateSolidBrush(RGB(r, g, b));
-
-            PAINTSTRUCT ps;
-            HDC hdc = BeginPaint(hwnd, &ps);
-            RECT rect;
-            GetClientRect(hwnd, &rect);
-            FillRect(hdc, &rect, g_hBrush);
-            EndPaint(hwnd, &ps);
-            return 0;
-        }
-
-        case WM_DESTROY:
-            if (g_hBrush) DeleteObject(g_hBrush);
-            PostQuitMessage(0);
-            return 0;
-
-        case WM_KEYDOWN:
-        case WM_LBUTTONDOWN:
-        case WM_RBUTTONDOWN:
-        case WM_MBUTTONDOWN:
-        case WM_MOUSEMOVE:
-        case WM_SYSKEYDOWN:
-            ShowCursor(TRUE);
-            DestroyWindow(hwnd);
-            return 0;
+static void RollCycle(Cycle& c) {
+    for (int i = 0; i < 15; i++) {
+        if (i < 8) c.fadeMs[i] = 3000 + rand() % 2001;
+        else       c.holdMs[i - 8] = 3000 + rand() % 2001;
     }
-    return DefWindowProc(hwnd, msg, wParam, lParam);
 }
 
-static INT_PTR CALLBACK ConfigDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    switch (msg) {
-        case WM_INITDIALOG:
-            SetWindowTextW(hwnd, L"Ghost Saver - Configuration");
-            return TRUE;
-        case WM_COMMAND:
-            if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL) {
-                EndDialog(hwnd, LOWORD(wParam));
-                return TRUE;
-            }
-            break;
-        case WM_CLOSE:
-            EndDialog(hwnd, IDCANCEL);
-            return TRUE;
-    }
-    return FALSE;
+static ULONGLONG CycleLength(const Cycle& c) {
+    ULONGLONG sum = BLACK_PHASE_MS;
+    for (int i = 0; i < 8; i++) sum += c.fadeMs[i];
+    for (int i = 0; i < 7; i++) sum += c.holdMs[i];
+    return sum;
 }
 
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
-                   LPSTR lpCmdLine, int nCmdShow) {
-    (void)hPrevInstance; (void)nCmdShow;
+static void ColorAt(const Cycle& c, ULONGLONG ms, BYTE& r, BYTE& g, BYTE& b) {
+    ULONGLONG t = ms;
+    // fade black->red
+    if (t < c.fadeMs[0]) {
+        int D = (int)c.fadeMs[0], ti = (int)t;
+        r = (BYTE)((0 * (D - ti) + 255 * ti + D / 2) / D);
+        g = 0; b = 0; return;
+    } t -= c.fadeMs[0];
+    // hold red
+    if (t < c.holdMs[0]) { r = 255; g = 0; b = 0; return; } t -= c.holdMs[0];
+    // fade red->green
+    if (t < c.fadeMs[1]) {
+        int D = (int)c.fadeMs[1], ti = (int)t;
+        r = (BYTE)((255 * (D - ti) + 0 * ti + D / 2) / D);
+        g = (BYTE)((0 * (D - ti) + 255 * ti + D / 2) / D);
+        b = 0; return;
+    } t -= c.fadeMs[1];
+    // hold green
+    if (t < c.holdMs[1]) { r = 0; g = 255; b = 0; return; } t -= c.holdMs[1];
+    // fade green->blue
+    if (t < c.fadeMs[2]) {
+        int D = (int)c.fadeMs[2], ti = (int)t;
+        r = 0;
+        g = (BYTE)((255 * (D - ti) + 0 * ti + D / 2) / D);
+        b = (BYTE)((0 * (D - ti) + 255 * ti + D / 2) / D);
+        return;
+    } t -= c.fadeMs[2];
+    // hold blue
+    if (t < c.holdMs[2]) { r = 0; g = 0; b = 255; return; } t -= c.holdMs[2];
+    // fade blue->yellow
+    if (t < c.fadeMs[3]) {
+        int D = (int)c.fadeMs[3], ti = (int)t;
+        r = (BYTE)((0 * (D - ti) + 255 * ti + D / 2) / D);
+        g = (BYTE)((0 * (D - ti) + 255 * ti + D / 2) / D);
+        b = (BYTE)((255 * (D - ti) + 0 * ti + D / 2) / D);
+        return;
+    } t -= c.fadeMs[3];
+    // hold yellow
+    if (t < c.holdMs[3]) { r = 255; g = 255; b = 0; return; } t -= c.fadeMs[3];
+    // fade yellow->cyan
+    if (t < c.fadeMs[4]) {
+        int D = (int)c.fadeMs[4], ti = (int)t;
+        r = (BYTE)((255 * (D - ti) + 0 * ti + D / 2) / D);
+        g = 255;
+        b = (BYTE)((0 * (D - ti) + 255 * ti + D / 2) / D);
+        return;
+    } t -= c.fadeMs[4];
+    // hold cyan
+    if (t < c.holdMs[4]) { r = 0; g = 255; b = 255; return; } t -= c.fadeMs[4];
+    // fade cyan->purple
+    if (t < c.fadeMs[5]) {
+        int D = (int)c.fadeMs[5], ti = (int)t;
+        r = (BYTE)((0 * (D - ti) + 128 * ti + D / 2) / D);
+        g = (BYTE)((255 * (D - ti) + 0 * ti + D / 2) / D);
+        b = (BYTE)((255 * (D - ti) + 128 * ti + D / 2) / D);
+        return;
+    } t -= c.fadeMs[5];
+    // hold purple
+    if (t < c.holdMs[5]) { r = 128; g = 0; b = 128; return; } t -= c.fadeMs[5];
+    // fade purple->white
+    if (t < c.fadeMs[6]) {
+        int D = (int)c.fadeMs[6], ti = (int)t;
+        r = (BYTE)((128 * (D - ti) + 255 * ti + D / 2) / D);
+        g = (BYTE)((0 * (D - ti) + 255 * ti + D / 2) / D);
+        b = (BYTE)((128 * (D - ti) + 255 * ti + D / 2) / D);
+        return;
+    } t -= c.fadeMs[6];
+    // hold white
+    if (t < c.holdMs[6]) { r = 255; g = 255; b = 255; return; } t -= c.fadeMs[6];
+    // fade white->black
+    if (t < c.fadeMs[7]) {
+        int D = (int)c.fadeMs[7], ti = (int)t;
+        r = (BYTE)((255 * (D - ti) + 0 * ti + D / 2) / D);
+        g = (BYTE)((255 * (D - ti) + 0 * ti + D / 2) / D);
+        b = (BYTE)((255 * (D - ti) + 0 * ti + D / 2) / D);
+        return;
+    } t -= c.fadeMs[7];
+    // black phase
+    r = 0; g = 0; b = 0;
+}
+
+static Cycle g_cycle;
+static ULONGLONG g_cycleStartMs;
+
+static void AdvanceCycle() {
+    ULONGLONG now = GetTickCount64();
+    while (now - g_cycleStartMs >= CycleLength(g_cycle)) {
+        g_cycleStartMs += CycleLength(g_cycle);
+        RollCycle(g_cycle);
+    }
+}
+
+static bool g_preview;
+
+static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    switch (msg) {
+    case WM_TIMER:
+        InvalidateRect(hwnd, nullptr, FALSE);
+        return 0;
+    case WM_PAINT: {
+        PAINTSTRUCT ps;
+        HDC hdc = BeginPaint(hwnd, &ps);
+        AdvanceCycle();
+        BYTE r, g, b;
+        ColorAt(g_cycle, GetTickCount64() - g_cycleStartMs, r, g, b);
+        SetDCBrushColor(hdc, RGB(r, g, b));
+        RECT rc;
+        GetClientRect(hwnd, &rc);
+        FillRect(hdc, &rc, (HBRUSH)GetStockObject(DC_BRUSH));
+        EndPaint(hwnd, &ps);
+        return 0;
+    }
+    case WM_ERASEBKGND:
+        return 1;
+    case WM_SETCURSOR:
+        if (g_preview) return DefWindowProc(hwnd, msg, wp, lp);
+        SetCursor(nullptr);
+        return TRUE;
+    case WM_LBUTTONDOWN: case WM_RBUTTONDOWN: case WM_MBUTTONDOWN:
+    case WM_MOUSEWHEEL:
+        if (!g_preview) DestroyWindow(hwnd);
+        return 0;
+    case WM_MOUSEMOVE:
+        if (!g_preview) DestroyWindow(hwnd);
+        return 0;
+    case WM_KEYDOWN: case WM_SYSKEYDOWN:
+        if (!g_preview) DestroyWindow(hwnd);
+        return 0;
+    case WM_ACTIVATEAPP:
+        if (!g_preview && !wp) DestroyWindow(hwnd);
+        return 0;
+    case WM_SYSCOMMAND:
+        if (wp == SC_SCREENSAVE) return 0;
+        return DefWindowProc(hwnd, msg, wp, lp);
+    case WM_DESTROY:
+        KillTimer(hwnd, 1);
+        PostQuitMessage(0);
+        return 0;
+    default:
+        return DefWindowProc(hwnd, msg, wp, lp);
+    }
+}
+
+static int RunFullScreen() {
+    WNDCLASSW wc = {};
+    wc.lpfnWndProc = WndProc;
+    wc.hInstance = GetModuleHandle(nullptr);
+    wc.lpszClassName = L"GhostSaverClass";
+    wc.hCursor = nullptr;
+    wc.hbrBackground = nullptr;
+    wc.style = CS_HREDRAW | CS_VREDRAW;
+    RegisterClassW(&wc);
+
+    HWND hwnd = CreateWindowExW(WS_EX_TOPMOST, L"GhostSaverClass", nullptr,
+        WS_POPUP,
+        GetSystemMetrics(SM_XVIRTUALSCREEN),
+        GetSystemMetrics(SM_YVIRTUALSCREEN),
+        GetSystemMetrics(SM_CXVIRTUALSCREEN),
+        GetSystemMetrics(SM_CYVIRTUALSCREEN),
+        nullptr, nullptr, GetModuleHandle(nullptr), nullptr);
+
+    RollCycle(g_cycle);
+    g_cycleStartMs = GetTickCount64();
+
+    ShowWindow(hwnd, SW_SHOW);
+    UpdateWindow(hwnd);
+    SetForegroundWindow(hwnd);
+    SetTimer(hwnd, 1, 33, nullptr);
+
+    MSG msg;
+    while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+    }
+    return (int)msg.wParam;
+}
+
+static int RunPreview(HWND hparent) {
+    WNDCLASSW wc = {};
+    wc.lpfnWndProc = WndProc;
+    wc.hInstance = GetModuleHandle(nullptr);
+    wc.lpszClassName = L"GhostSaverClass";
+    wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+    wc.hbrBackground = nullptr;
+    wc.style = CS_HREDRAW | CS_VREDRAW;
+    RegisterClassW(&wc);
+
+    HWND hwnd = CreateWindowExW(0, L"GhostSaverClass", nullptr,
+        WS_CHILD | WS_VISIBLE,
+        0, 0, 320, 240,
+        hparent, nullptr, GetModuleHandle(nullptr), nullptr);
+
+    RollCycle(g_cycle);
+    g_cycleStartMs = GetTickCount64();
+
+    SetTimer(hwnd, 1, 33, nullptr);
+
+    MSG msg;
+    while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+    }
+    return (int)msg.wParam;
+}
+
+static int RunConfigure(HWND hparent) {
+    MessageBoxW(hparent,
+        L"Ghost Saver fades the whole screen through black, red, green, blue, yellow, cyan, purple and white, then rests on black, to help clear image retention and burn-in.\n\nThere are no settings to configure.",
+        L"Ghost Saver", MB_OK | MB_ICONINFORMATION);
+    return 0;
+}
+
+int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
+    (void)hInstance; (void)nCmdShow;
+
+    LARGE_INTEGER qpc;
+    QueryPerformanceCounter(&qpc);
+    srand((unsigned)qpc.QuadPart);
 
     int argc;
-    LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
-    if (!argv) return 1;
+    PWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    if (!argv) return 0;
 
-    bool isConfig = false;
-    bool isInParent = false;
-    HWND parentHwnd = nullptr;
+    bool fullScreen = true;
+    bool previewMode = false;
+    HWND hparent = nullptr;
 
-    for (int i = 1; i < argc; i++) {
-        if (lstrcmpiW(argv[i], L"/c") == 0 || lstrcmpiW(argv[i], L"-c") == 0)
-            isConfig = true;
-        else if (lstrcmpiW(argv[i], L"/p") == 0 || lstrcmpiW(argv[i], L"-p") == 0) {
-            isInParent = true;
-            if (i + 1 < argc)
-                parentHwnd = (HWND)(INT_PTR)wcstol(argv[i + 1], nullptr, 10);
+    if (argc > 1) {
+        WCHAR* arg = argv[1];
+        // skip prefix / or -
+        if (*arg == L'/' || *arg == L'-') arg++;
+        WCHAR lower = towlower(*arg);
+
+        if (lower == L's') {
+            fullScreen = true;
+        } else if (lower == L'p') {
+            fullScreen = false;
+            previewMode = true;
+            arg++;
+            if (*arg == L':') arg++;
+            else {
+                // next token
+                if (argc < 3) { LocalFree(argv); return 0; }
+                arg = argv[2];
+            }
+            unsigned long hv = wcstoul(arg, nullptr, 10);
+            hparent = (HWND)(UINT_PTR)hv;
+            if (!hparent || !IsWindow(hparent)) { LocalFree(argv); return 0; }
+        } else if (lower == L'c') {
+            fullScreen = false;
+            arg++;
+            if (*arg == L':') arg++;
+            else {
+                if (argc < 3) arg = nullptr;
+                else arg = argv[2];
+            }
+            if (arg && *arg) {
+                unsigned long hv = wcstoul(arg, nullptr, 10);
+                hparent = (HWND)(UINT_PTR)hv;
+                if (!IsWindow(hparent)) hparent = nullptr;
+            }
+        } else {
+            LocalFree(argv);
+            return 0;
         }
     }
 
     LocalFree(argv);
 
-    if (isConfig || (isInParent && parentHwnd)) {
-        DialogBoxParamW(hInstance, L"CONFIG_DIALOG", parentHwnd, ConfigDlgProc, 0);
-        return 0;
-    }
+    g_preview = previewMode;
 
-    const wchar_t* className = L"GhostSaverClass";
-    WNDCLASSEXW wc = {};
-    wc.cbSize = sizeof(WNDCLASSEXW);
-    wc.style = CS_HREDRAW | CS_VREDRAW;
-    wc.lpfnWndProc = WndProc;
-    wc.hInstance = hInstance;
-    wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
-    wc.lpszClassName = className;
-
-    if (!RegisterClassExW(&wc)) return 1;
-
-    int screenWidth = GetSystemMetrics(SM_CXSCREEN);
-    int screenHeight = GetSystemMetrics(SM_CYSCREEN);
-
-    g_hwnd = CreateWindowExW(
-        WS_EX_TOPMOST | WS_EX_NOACTIVATE,
-        className, L"Ghost Saver",
-        WS_POPUP | WS_VISIBLE,
-        0, 0, screenWidth, screenHeight,
-        nullptr, nullptr, hInstance, nullptr
-    );
-
-    if (!g_hwnd) { UnregisterClassW(className, hInstance); return 1; }
-
-    SetWindowLongPtr(g_hwnd, GWLP_USERDATA, (LONG_PTR)GetTickCount());
-    ShowCursor(FALSE);
-
-    MSG msg;
-    while (GetMessage(&msg, nullptr, 0, 0) > 0) {
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
-    }
-
-    ShowCursor(TRUE);
-    UnregisterClassW(className, hInstance);
-    return (int)msg.wParam;
+    if (fullScreen) return RunFullScreen();
+    if (previewMode) return RunPreview(hparent);
+    return RunConfigure(hparent);
 }
