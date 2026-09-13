@@ -1,6 +1,6 @@
 # ghost-saver: Fireworks Mode Specification
 
-Status: draft, awaiting owner review
+Status: approved by the owner (2026-09-13); implemented in commit `a6a8d50`
 Target: Windows 10 1703+ / Windows 11, x86-64
 Deliverable: `ghost-saver.scr`, a native Win32 screen saver with fireworks mode
 Extends: `docs/ghost-saver-spec.md`. Everything there still applies unless this document says otherwise.
@@ -15,6 +15,7 @@ Revisions:
   - Added section 9 on the bugs the first build had.
 - 2026-09-13: owner tuning. Explosive force doubled (160–500 px/s), dots get single-pixel trails, fall time widened to 3.5–5.5 s.
 - 2026-09-13: owner tuning. Rockets 50% larger with random ±20% scale, drawn as 1 px outlines; stars are 5-line pentagrams. Explosions unchanged.
+- 2026-09-13: approved by the owner.
 
 ---
 
