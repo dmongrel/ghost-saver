@@ -549,7 +549,7 @@ static int RunPreview(HWND hparent) {
 
 static int RunConfigure(HWND hparent) {
     MessageBoxW(hparent,
-        L"Ghost Saver fades the whole screen through black, red, green, blue, yellow, cyan, purple and white, then rests on black, to help clear image retention and burn-in.\n\nThere are no settings to configure.",
+        L"Ghost Saver rests on black with fireworks, then fades the whole screen through black, red, green, blue, yellow, cyan, purple and white, to help clear image retention and burn-in.\n\nThere are no settings to configure.",
         L"Ghost Saver", MB_OK | MB_ICONINFORMATION);
     return 0;
 }

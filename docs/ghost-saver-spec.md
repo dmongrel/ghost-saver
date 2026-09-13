@@ -262,7 +262,7 @@ ghost-saver has no settings. The current code calls `DialogBoxParamW` with a `CO
 
 - **C-1** Show `MessageBoxW(owner, text, L"Ghost Saver", MB_OK | MB_ICONINFORMATION)`, where `owner` is the handle from `/c:<hwnd>` if it is valid (`IsWindow`), otherwise `nullptr`.
 - **C-2** Text, verbatim:
-  `Ghost Saver fades the whole screen through black, red, green, blue, yellow, cyan, purple and white, then rests on black, to help clear image retention and burn-in.\n\nThere are no settings to configure.`
+  `Ghost Saver rests on black with fireworks, then fades the whole screen through black, red, green, blue, yellow, cyan, purple and white, to help clear image retention and burn-in.\n\nThere are no settings to configure.`
 - **C-3** Remove `ConfigDlgProc` and every reference to a dialog resource.
 
 ## 7. Build
