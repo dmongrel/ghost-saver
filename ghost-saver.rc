@@ -1,0 +1,6 @@
+STRINGTABLE
+BEGIN
+    1 "Ghost Saver"
+END
+
+CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST "ghost-saver.manifest"

@@ -2,21 +2,26 @@
 # Builds a Windows screensaver (.scr file) that cycles through colors
 # to help remove ghosting/burn-in artifacts from monitors.
 
-CC = g++
-CFLAGS = -Wall -Wextra -O2
-LDFLAGS = -mwindows -lgdi32
-TARGET = ghost-saver.scr
-SRC = main.cpp
+CXX      = g++
+WINDRES  = windres
+CXXFLAGS = -std=c++11 -Wall -Wextra -O2 -DUNICODE -D_UNICODE
+LDFLAGS  = -mwindows -static
+LDLIBS   = -lgdi32 -lshell32
+TARGET   = ghost-saver.scr
+RES      = ghost-saver.res
 
 .PHONY: all clean install
 
 all: $(TARGET)
 
-$(TARGET): $(SRC)
-	$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS)
+$(RES): ghost-saver.rc ghost-saver.manifest
+	$(WINDRES) --preprocessor="cat" ghost-saver.rc -O coff -o $@
+
+$(TARGET): main.cpp $(RES)
+	$(CXX) $(CXXFLAGS) -o $@ main.cpp $(RES) $(LDFLAGS) $(LDLIBS)
 
 clean:
-	rm -f $(TARGET)
+	rm -f $(TARGET) $(RES)
 
 install: $(TARGET)
-	cp $(TARGET) "$(windir)\System32\"
+	cp $(TARGET) "$(SYSTEMROOT)/System32/"
