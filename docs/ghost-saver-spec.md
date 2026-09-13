@@ -14,6 +14,7 @@ Revisions:
 - 2026-09-12: BR-1 (preview shows background then black) added.
 - 2026-09-12: color cycle replaced. The sine sweep is gone. The saver now steps through a fixed list of colors with random fade and hold times, then rests on black for 30 s.
 - 2026-09-12: purple changed from magenta (255, 0, 255) to (128, 0, 128).
+- 2026-09-12: findings from the first local build folded in (section 9b). The Makefile now uses a temp dir inside the project and adds `-municode`, `.rc` files must keep their `#include`, `ColorAt` must be a loop, and a second reference table uses unequal durations.
 
 ---
 
@@ -95,6 +96,7 @@ struct Cycle {
 
 - **V-13** Provide `static void RollCycle(Cycle& c)`, which fills all 15 durations per V-3, and `static ULONGLONG CycleLength(const Cycle& c)`, which returns the sum of the 15 durations plus `BLACK_PHASE_MS`.
 - **V-14** Provide the pure function `static void ColorAt(const Cycle& c, ULONGLONG msIntoCycle, BYTE& r, BYTE& g, BYTE& b)`. It walks the segments in the order of 3.2 and returns the color for that instant. It reads nothing global except the stop table, makes no Win32 calls, and uses no randomness.
+  - It MUST be a single loop over `i = 0..7` that uses `STOPS[i]`, `STOPS[i + 1]`, `fadeMs[i]` and (for `i < 7`) `holdMs[i]`. Do not write out each of the 16 segments by hand. The first build did, and copy-paste errors put the wrong durations into four segments (B-4).
   - Segments are half-open intervals `[start, end)`. At the exact end of a fade, the color belongs to the following hold.
   - In a fade from color `A` to color `B` of duration `D`, at `t` ms into the fade, compute each channel with integer math only, so results are exact and repeatable:
     `v = (A * (D - t) + B * t + D / 2) / D`
@@ -104,6 +106,10 @@ struct Cycle {
 - **V-17** No floating-point math and no `<cmath>` are needed. Do not use `M_PI`.
 
 ### 3.4 Reference values
+
+`ColorAt` MUST pass **both** tables below exactly. The first uses equal durations, which is easy to reason about. It can't tell a fade duration from a hold duration, so it passes code that mixes them up. The second uses a different duration for every segment and catches that mistake.
+
+#### 3.4.1 Equal durations
 
 With every fade and hold set to exactly 4000 ms, the cycle length is 90 000 ms, and `ColorAt` MUST return exactly:
 
@@ -128,6 +134,37 @@ With every fade and hold set to exactly 4000 ms, the cycle length is 90 000 ms, 
 | 58000 | fade white → black, middle | 128 | 128 | 128 |
 | 60000 | black phase, start | 0 | 0 | 0 |
 | 89999 | black phase, last ms | 0 | 0 | 0 |
+
+#### 3.4.2 Unequal durations
+
+Set `fadeMs[i] = 3000 + 100 * i` (3000, 3100, … 3700) and `holdMs[i] = 5000 - 100 * i` (5000, 4900, … 4400). The cycle length is 89 700 ms, and `ColorAt` MUST return exactly:
+
+| msIntoCycle | Segment | R | G | B |
+|---:|---|---:|---:|---:|
+| 1500 | fade black → red, middle | 128 | 0 | 0 |
+| 3000 | hold red, first ms | 255 | 0 | 0 |
+| 7999 | hold red, last ms | 255 | 0 | 0 |
+| 9550 | fade red → green, middle | 128 | 128 | 0 |
+| 11100 | hold green, first ms | 0 | 255 | 0 |
+| 15999 | hold green, last ms | 0 | 255 | 0 |
+| 17600 | fade green → blue, middle | 0 | 128 | 128 |
+| 19200 | hold blue, first ms | 0 | 0 | 255 |
+| 23999 | hold blue, last ms | 0 | 0 | 255 |
+| 25650 | fade blue → yellow, middle | 128 | 128 | 128 |
+| 27300 | hold yellow, first ms | 255 | 255 | 0 |
+| 31999 | hold yellow, last ms | 255 | 255 | 0 |
+| 33700 | fade yellow → cyan, middle | 128 | 255 | 128 |
+| 35400 | hold cyan, first ms | 0 | 255 | 255 |
+| 39999 | hold cyan, last ms | 0 | 255 | 255 |
+| 41750 | fade cyan → purple, middle | 64 | 128 | 192 |
+| 43500 | hold purple, first ms | 128 | 0 | 128 |
+| 47999 | hold purple, last ms | 128 | 0 | 128 |
+| 49800 | fade purple → white, middle | 192 | 128 | 192 |
+| 51600 | hold white, first ms | 255 | 255 | 255 |
+| 55999 | hold white, last ms | 255 | 255 | 255 |
+| 57850 | fade white → black, middle | 128 | 128 | 128 |
+| 59700 | black phase, start | 0 | 0 | 0 |
+| 89699 | black phase, last ms | 0 | 0 | 0 |
 
 ### 3.5 Frame pacing
 
@@ -239,6 +276,8 @@ The finished repository contains exactly these source files. Nothing else is add
 | `README.md` | User-facing docs (section 8) |
 | `docs/ghost-saver-spec.md` | This file. Do not edit it as part of the build. |
 
+Build outputs that are never committed: `ghost-saver.scr`, `ghost-saver.res`, and the `build/` directory (holds compiler temp files, section 7.4). Don't create any other directories, such as `tmpdir/`, in the project root.
+
 ### 7.2 Resources
 
 `ghost-saver.rc`:
@@ -255,6 +294,10 @@ CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST "ghost-saver.manifest"
 ```
 
 String ID 1 is the name Windows shows in the Screen Saver Settings dropdown. Without it the list shows the file name, `ghost-saver`.
+
+- **R-1** The `#include <windows.h>` line MUST stay. It defines `CREATEPROCESS_MANIFEST_RESOURCE_ID` (1) and `RT_MANIFEST` (24). Without it, windres doesn't fail. It silently stores the manifest as a custom resource named `"CREATEPROCESS_MANIFEST_RESOURCE_ID"` of type `"RT_MANIFEST"`, which Windows ignores (B-3).
+- **R-2** Run windres with its default preprocessor. Do not pass `--preprocessor="cat"` or any other `--preprocessor` override. That turns off `#include`, and the manifest is lost as in R-1.
+- **R-3** Check the result with `windres -J coff -i ghost-saver.res -O rc`. The output MUST contain a `STRINGTABLE` and a resource whose type is the number `24`, not the string `"RT_MANIFEST"`.
 
 `ghost-saver.manifest`:
 
@@ -281,8 +324,10 @@ With the manifest in place, requirement A-4 is met and `main.cpp` needs no DPI A
 
 - MinGW-w64, **x86_64** target (MSYS2 `mingw64` or `ucrt64`). A 32-bit build copied into `System32` gets silently redirected to `SysWOW64`.
 - Language: C++11 (`-std=c++11`). No exceptions or RTTI are needed; nothing from the C++ standard library beyond `<cstdlib>` (`srand`/`rand`).
-- Compile: `-std=c++11 -Wall -Wextra -O2 -DUNICODE -D_UNICODE`
-- Link: `-mwindows -static -lgdi32 -lshell32`
+- Entry point: `int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)`. MinGW only links `wWinMain` when `-municode` is passed. Without it the link fails with ``undefined reference to `WinMain'`` (B-1).
+- Compile: `-std=c++11 -Wall -Wextra -O2 -municode -DUNICODE -D_UNICODE`
+- Link: `-mwindows -municode -static -lgdi32 -lshell32`
+- Temp files: gcc, `collect2` and `ld` all write temp files to the directory named by `TMP`/`TEMP`/`TMPDIR`. If that directory is missing or not writable, the build fails with `Cannot create temporary file in <dir>: No such file or directory` (B-2). `-pipe` does not avoid it; the link step still needs a temp file. The Makefile MUST therefore point all three variables at `build/tmp` inside the project and create it (section 7.4). Do not rely on, or try to repair, the shell's own temp settings.
 - `-static` keeps the `.scr` from depending on `libstdc++-6.dll` / `libgcc_s_*.dll`, which do not exist on a normal machine. The saver runs from `System32`, where no MinGW DLLs are on the path.
 - The build MUST finish with **zero warnings**. Remove unused declarations such as the current `NUM_CHANNELS` and `g_hwnd` if they end up unused.
 - Win32 calls that have `A`/`W` variants MUST use the `W` form or the `UNICODE`-mapped macro consistently.
@@ -292,32 +337,48 @@ With the manifest in place, requirement A-4 is met and `main.cpp` needs no DPI A
 ```make
 CXX      = g++
 WINDRES  = windres
-CXXFLAGS = -std=c++11 -Wall -Wextra -O2 -DUNICODE -D_UNICODE
-LDFLAGS  = -mwindows -static
+CXXFLAGS = -std=c++11 -Wall -Wextra -O2 -municode -DUNICODE -D_UNICODE
+LDFLAGS  = -mwindows -municode -static
 LDLIBS   = -lgdi32 -lshell32
 TARGET   = ghost-saver.scr
 RES      = ghost-saver.res
+BUILDTMP = build/tmp
+
+# Keep compiler/linker temp files inside the project; don't depend on TMP/TEMP.
+export TMP    := $(abspath $(BUILDTMP))
+export TEMP   := $(TMP)
+export TMPDIR := $(TMP)
 
 .PHONY: all clean install
 
 all: $(TARGET)
 
-$(RES): ghost-saver.rc ghost-saver.manifest
+$(BUILDTMP):
+	mkdir -p $@
+
+$(RES): ghost-saver.rc ghost-saver.manifest | $(BUILDTMP)
 	$(WINDRES) ghost-saver.rc -O coff -o $@
 
-$(TARGET): main.cpp $(RES)
+$(TARGET): main.cpp $(RES) | $(BUILDTMP)
 	$(CXX) $(CXXFLAGS) -o $@ main.cpp $(RES) $(LDFLAGS) $(LDLIBS)
 
 clean:
-	rm -f $(TARGET) $(RES)
+	rm -rf $(TARGET) $(RES) build
 
 install: $(TARGET)
 	cp $(TARGET) "$(SYSTEMROOT)/System32/"
 ```
 
-Recipe lines are indented with a tab. The current `install` recipe, `cp $(TARGET) "$(windir)\System32\"`, is broken: the trailing `\"` escapes the closing quote. `install` needs an elevated (Administrator) shell.
+Notes:
 
-Add `*.res` to `.gitignore`.
+- Recipe lines are indented with a tab, not spaces.
+- `| $(BUILDTMP)` is an order-only prerequisite: the directory is created before windres and g++ run, but its timestamp never triggers a rebuild.
+- The recipes use `mkdir -p` and `rm -rf`, so this Makefile needs a POSIX shell. `mingw32-make` uses `sh` when one is on `PATH` (for example `C:\msys64\usr\bin`); `make` from MSYS2 always has it. Both were verified to build successfully with `TMP`/`TEMP` pointing at a directory that doesn't exist.
+- Either toolchain command works: `make` (MSYS2 `usr/bin`) or `mingw32-make` (MSYS2 `ucrt64/bin`), as long as `ucrt64/bin` (or `mingw64/bin`) is first on `PATH` so `g++` and `windres` resolve.
+- `make` may print `using default temporary directory ...` when `TMPDIR` is broken in the calling shell. That message comes from make itself and is harmless.
+- The original `install` recipe, `cp $(TARGET) "$(windir)\System32\"`, is broken: the trailing `\"` escapes the closing quote. `install` needs an elevated (Administrator) shell.
+
+`.gitignore` MUST include `*.res` and `build/`.
 
 ## 8. README rewrite
 
@@ -378,6 +439,22 @@ Field reports against the installed build. Each one is a requirement: the implem
 - BR-1.d A key press or real mouse movement ends the preview and returns to the Screen Saver Settings dialog.
 - BR-1.e The small preview monitor inside the dialog animates the same cycle before and after clicking **Preview**.
 
+## 9b. Findings from the first local build (2026-09-12)
+
+The first implementation attempt was compiled and reviewed against this spec. Each finding is now covered by a requirement; the list exists so the same mistakes aren't repeated.
+
+| # | Finding | Symptom | Now covered by |
+|---|---|---|---|
+| B-1 | `wWinMain` entry point without `-municode` | Link fails: ``undefined reference to `WinMain'`` | 7.3, 7.4 |
+| B-2 | Build depends on the shell's `TMP`/`TEMP`; `tmpdir/` left in the project root | `Cannot create temporary file in <dir>` when those point at a missing or unwritable directory | 7.1, 7.3, 7.4 |
+| B-3 | `#include <windows.h>` removed from `ghost-saver.rc`, windres run with `--preprocessor="cat"` | Builds cleanly, but the manifest is stored under a string type Windows ignores, so no DPI awareness | R-1, R-2, R-3 |
+| B-4 | `ColorAt` written out segment by segment; after the yellow, cyan, purple and white holds it subtracts `fadeMs[i]` instead of `holdMs[i]` | Passes table 3.4.1, but with unequal durations the cycle drifts: the end of the cyan hold shows purple, purple shows white, white shows black | V-14 loop rule, table 3.4.2 |
+| B-5 | Any `WM_MOUSEMOVE` closes the saver | Saver can close as soon as it opens (a cause of BR-1) | F-8 |
+| B-6 | Preview child window hard-coded to 320×240 and shown before its first paint | Preview doesn't fill the settings dialog's monitor image | P-1, V-12 |
+| B-7 | `WM_XBUTTONDOWN` and `WM_MOUSEHWHEEL` not handled | Those inputs don't close the saver | F-7 |
+| B-8 | `WM_SYSCOMMAND` compared to `SC_SCREENSAVE` without masking `wParam & 0xFFF0` | Check can miss | F-11 |
+| B-9 | `main.cpp` staged as deleted in git with an untracked copy alongside (`git rm --cached`) | Committing would delete `main.cpp` from the repo | Don't run `git rm`; leave git index changes to the owner |
+
 ## 10. Out of scope
 
 Do not add any of these. They are not part of the current design.
@@ -398,13 +475,15 @@ The implementation is done when every check passes. Run them in order.
 **Build**
 
 1. `make clean && make` in an MSYS2 x86_64 shell finishes with zero warnings and produces `ghost-saver.scr`.
+1a. The build also succeeds when the calling shell's temp settings are broken: `make clean && TMP='C:\nope' TEMP='C:\nope' TMPDIR=/nope make`. No `tmpdir/` or other stray directory appears in the project root; only `build/` is created.
 2. `objdump -p ghost-saver.scr | grep "DLL Name"` lists only Windows system DLLs (`KERNEL32`, `USER32`, `GDI32`, `SHELL32`, and `msvcrt` or `api-ms-win-crt-*`). No `libstdc++`, `libgcc`, or `libwinpthread`.
 3. `windres` embeds the string table: in Screen Saver Settings, after install, the dropdown entry reads **Ghost Saver**.
+3a. `windres -J coff -i ghost-saver.res -O rc` shows a `STRINGTABLE` and a resource of type `24` (R-3). A type shown as `"RT_MANIFEST"` in quotes is a failure.
 
 **Color math**
 
 4. Checked with a throwaway harness that includes the functions (don't commit it):
-   - `ColorAt` on a cycle with every duration set to 4000 matches every row of the table in 3.4 **exactly**.
+   - `ColorAt` matches every row of table 3.4.1 (equal durations) **and** table 3.4.2 (unequal durations) **exactly**.
    - Over 10 000 calls to `RollCycle`, every duration is within 3000–5000, both 3000 and 5000 show up at least once, and `CycleLength` is always within 75 000–105 000.
    - Two cycles rolled in a row have different durations.
 
