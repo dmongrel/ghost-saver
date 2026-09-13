@@ -16,12 +16,13 @@ Revisions:
 - 2026-09-13: owner tuning. Explosive force doubled (160–500 px/s), dots get single-pixel trails, fall time widened to 3.5–5.5 s.
 - 2026-09-13: owner tuning. Rockets 50% larger with random ±20% scale, drawn as 1 px outlines; stars are 5-line pentagrams. Explosions unchanged.
 - 2026-09-13: approved by the owner.
+- 2026-09-13: owner direction. The black phase, and with it the fireworks, now opens each cycle instead of closing it (`docs/ghost-saver-spec.md` section 3.2), so fireworks start as soon as the saver launches.
 
 ---
 
 ## 1. Purpose
 
-Fireworks mode replaces the plain black rest period (the 30-second black phase between color cycles) with a fireworks display. The display still rests on black for 30 seconds, but instead of a solid black fill it shows falling shapes that explode into particles when they reach the bottom of the screen.
+Fireworks mode replaces the plain black rest period (the 30-second black phase that opens each cycle, before the color fades) with a fireworks display. The display still rests on black for 30 seconds, but instead of a solid black fill it shows falling shapes that explode into particles when they reach the bottom of the screen.
 
 This mode is always active during the black phase; there is no toggle.
 
@@ -31,9 +32,9 @@ This mode is always active during the black phase; there is no toggle.
 
 ### 2.1 When it runs
 
-Fireworks mode runs only during segment 16 of the cycle (the black phase, `BLACK_PHASE_MS = 30000`). During all other segments (fades and holds) the saver renders exactly as before: solid fills of the current color.
+Fireworks mode runs only during segment 1 of the cycle (the black phase, `BLACK_PHASE_MS = 30000`). During all other segments (fades and holds) the saver renders exactly as before: solid fills of the current color.
 
-The saver is in the black phase when `msIntoCycle >= CycleLength(cycle) - BLACK_PHASE_MS`.
+The saver is in the black phase when `msIntoCycle < BLACK_PHASE_MS`.
 
 ### 2.2 When it does not run
 
@@ -232,7 +233,7 @@ If the buffer can't be created, fill the window with black for that frame instea
 Fireworks mode doesn't change any exit conditions:
 
 - Any key press, mouse button click, mouse wheel, or mouse movement beyond 4 pixels still closes the saver immediately.
-- The fireworks display is replaced by the next color cycle (fade to red) when the black phase ends.
+- The fireworks display is replaced by the color fades (fade to red) when the black phase ends.
 - No extra input handling is needed.
 
 ---
@@ -261,7 +262,7 @@ The build MUST still finish with zero warnings.
 
 ## 7. Acceptance criteria
 
-**Visual** (run `ghost-saver.scr /s` and wait for the black phase, 45–75 s after launch):
+**Visual** (run `ghost-saver.scr /s`; the black phase starts at launch and recurs every 75–105 s):
 
 1. During the 30-second black phase, shapes fall from random positions along the top edge.
 2. Each shape takes 3.5–5.5 seconds to reach the bottom; some noticeably faster than others.
@@ -271,7 +272,7 @@ The build MUST still finish with zero warnings.
 6. Particles are near-white with a hint of the shape's color, arc downward under gravity, and fade out over 1.5–2.5 seconds. Each dot drags a short curved single-pixel trail that fades with it.
 7. Key presses and mouse movement still close the saver immediately.
 8. Preview (`/p`) never shows fireworks.
-9. When the black phase ends, the fade to red starts cleanly. At the next black phase the screen starts empty, with no leftover rockets or particles.
+9. When the black phase ends, the fade to red starts cleanly. At the next black phase, after white fades to black, the screen starts empty, with no leftover rockets or particles.
 10. Running for 30 minutes shows a stable GDI object count and memory use.
 
 **Harness** (throwaway, not committed; drives `UpdateFireworks` with controlled timestamps and renders into memory DCs):

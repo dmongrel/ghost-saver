@@ -16,12 +16,13 @@ Revisions:
 - 2026-09-12: purple changed from magenta (255, 0, 255) to (128, 0, 128).
 - 2026-09-12: findings from the first local build folded in (section 9b). The Makefile now uses a temp dir inside the project and adds `-municode`, `.rc` files must keep their `#include`, `ColorAt` must be a loop, and a second reference table uses unequal durations.
 - 2026-09-12: BR-1 marked resolved (fixed in `73d8ac8`, confirmed by the owner).
+- 2026-09-13: owner direction. The 30 s black phase now opens each cycle instead of closing it, so the saver starts on black (fireworks, see `docs/ghost-saver-fireworks-spec.md`) and the color fades follow. `ColorAt` now takes ms into the color fades rather than ms into the cycle.
 
 ---
 
 ## 1. Purpose
 
-ghost-saver is a screen saver whose job is to exercise every sub-pixel of every connected display, to help clear image retention ("ghosting") and reduce burn-in. It fills the screen with one solid color at a time. Starting from black, it fades through red, green, blue, yellow, cyan, purple and white and back to black, holding each color for a few seconds. Then it rests on black for 30 seconds and starts over. It draws nothing else: no text, no shapes, no cursor.
+ghost-saver is a screen saver whose job is to exercise every sub-pixel of every connected display, to help clear image retention ("ghosting") and reduce burn-in. It fills the screen with one solid color at a time. Each cycle opens by resting on black for 30 seconds. Then, starting from black, it fades through red, green, blue, yellow, cyan, purple and white and back to black, holding each color for a few seconds, and starts over. It draws nothing else: no text, no shapes, no cursor.
 
 ## 2. Source of truth
 
@@ -59,31 +60,31 @@ One cycle is this sequence of segments, back to back with no gaps:
 
 | # | Segment | Duration | Color during segment |
 |---:|---|---|---|
-| 1 | fade black → red | T0, random | interpolated |
-| 2 | hold red | H0, random | red |
-| 3 | fade red → green | T1, random | interpolated |
-| 4 | hold green | H1, random | green |
-| 5 | fade green → blue | T2, random | interpolated |
-| 6 | hold blue | H2, random | blue |
-| 7 | fade blue → yellow | T3, random | interpolated |
-| 8 | hold yellow | H3, random | yellow |
-| 9 | fade yellow → cyan | T4, random | interpolated |
-| 10 | hold cyan | H4, random | cyan |
-| 11 | fade cyan → purple | T5, random | interpolated |
-| 12 | hold purple | H5, random | purple |
-| 13 | fade purple → white | T6, random | interpolated |
-| 14 | hold white | H6, random | white |
-| 15 | fade white → black | T7, random | interpolated |
-| 16 | black phase | 30 000 ms, fixed | black |
+| 1 | black phase | 30 000 ms, fixed | black |
+| 2 | fade black → red | T0, random | interpolated |
+| 3 | hold red | H0, random | red |
+| 4 | fade red → green | T1, random | interpolated |
+| 5 | hold green | H1, random | green |
+| 6 | fade green → blue | T2, random | interpolated |
+| 7 | hold blue | H2, random | blue |
+| 8 | fade blue → yellow | T3, random | interpolated |
+| 9 | hold yellow | H3, random | yellow |
+| 10 | fade yellow → cyan | T4, random | interpolated |
+| 11 | hold cyan | H4, random | cyan |
+| 12 | fade cyan → purple | T5, random | interpolated |
+| 13 | hold purple | H5, random | purple |
+| 14 | fade purple → white | T6, random | interpolated |
+| 15 | hold white | H6, random | white |
+| 16 | fade white → black | T7, random | interpolated |
 
 After segment 16 the next cycle starts at segment 1.
 
-- **V-2** A cycle has 8 fades (`T0`–`T7`), 7 holds (`H0`–`H6`, one for each of red through white) and one black phase. Neither the starting black (stop 0) nor the final black (stop 8) gets a random hold. The black phase is the rest between cycles. `BLACK_PHASE_MS = 30000`, not random.
+- **V-2** A cycle has 8 fades (`T0`–`T7`), 7 holds (`H0`–`H6`, one for each of red through white) and one black phase. Neither the starting black (stop 0) nor the final black (stop 8) gets a random hold. The black phase opens each cycle and is the rest between color sequences. `BLACK_PHASE_MS = 30000`, not random.
 - **V-3** Every `T` and `H` value is a random whole number of milliseconds, uniformly distributed over **3000–5000 inclusive**, drawn independently of the others. All 15 values for a cycle are drawn when that cycle begins. The next cycle draws a fresh set.
   - Seed once at startup: `srand((unsigned)qpc.QuadPart)`, where `qpc` comes from `QueryPerformanceCounter`.
   - Draw with `3000 + rand() % 2001`. The small modulo bias doesn't matter here.
 - **V-4** A cycle therefore lasts between 75 s (15 × 3 s + 30 s) and 105 s (15 × 5 s + 30 s).
-- **V-5** When the saver starts (full screen or preview), it begins at the start of segment 1 of a freshly drawn cycle. There is no black phase before the first fade. The first frame is black and starts brightening toward red at once.
+- **V-5** When the saver starts (full screen or preview), it begins at the start of segment 1 (the black phase) of a freshly drawn cycle. The first frame is black, and the fade toward red starts 30 s later.
 - **V-6** The cycle repeats until the saver exits. Nothing else is drawn: no brightness steps, no sine sweep, no other colors.
 
 ### 3.3 Data model and color function
@@ -96,13 +97,13 @@ struct Cycle {
 ```
 
 - **V-13** Provide `static void RollCycle(Cycle& c)`, which fills all 15 durations per V-3, and `static ULONGLONG CycleLength(const Cycle& c)`, which returns the sum of the 15 durations plus `BLACK_PHASE_MS`.
-- **V-14** Provide the pure function `static void ColorAt(const Cycle& c, ULONGLONG msIntoCycle, BYTE& r, BYTE& g, BYTE& b)`. It walks the segments in the order of 3.2 and returns the color for that instant. It reads nothing global except the stop table, makes no Win32 calls, and uses no randomness.
+- **V-14** Provide the pure function `static void ColorAt(const Cycle& c, ULONGLONG msIntoColors, BYTE& r, BYTE& g, BYTE& b)`. It walks the fades and holds (segments 2–16) in the order of 3.2 and returns the color for that instant. `msIntoColors` is ms since the end of the black phase, `msIntoCycle - BLACK_PHASE_MS`; the black phase itself never reaches `ColorAt`. It reads nothing global except the stop table, makes no Win32 calls, and uses no randomness.
   - It MUST be a single loop over `i = 0..7` that uses `STOPS[i]`, `STOPS[i + 1]`, `fadeMs[i]` and (for `i < 7`) `holdMs[i]`. Do not write out each of the 16 segments by hand. The first build did, and copy-paste errors put the wrong durations into four segments (B-4).
   - Segments are half-open intervals `[start, end)`. At the exact end of a fade, the color belongs to the following hold.
   - In a fade from color `A` to color `B` of duration `D`, at `t` ms into the fade, compute each channel with integer math only, so results are exact and repeatable:
     `v = (A * (D - t) + B * t + D / 2) / D`
-  - If `msIntoCycle >= CycleLength(c)`, return black. Callers never pass such a value (V-15), but the function must not read out of bounds.
-- **V-15** Timekeeping. Keep file-scope state: the current `Cycle` and `cycleStartMs` (a `GetTickCount64()` value). At startup, roll a cycle and set `cycleStartMs` to now. Before each paint, read `now`. While `now - cycleStartMs >= CycleLength(current)`, add that length to `cycleStartMs` and roll a new cycle. Then call `ColorAt(current, now - cycleStartMs, ...)`. The loop lets the saver catch up after a long stall, such as the machine waking from sleep.
+  - If `msIntoColors` is at or past the end of the last fade, return black. Callers never pass such a value (V-15), but the function must not read out of bounds.
+- **V-15** Timekeeping. Keep file-scope state: the current `Cycle` and `cycleStartMs` (a `GetTickCount64()` value). At startup, roll a cycle and set `cycleStartMs` to now. Before each paint, read `now`. While `now - cycleStartMs >= CycleLength(current)`, add that length to `cycleStartMs` and roll a new cycle. Then, if `now - cycleStartMs < BLACK_PHASE_MS`, the color is black; otherwise call `ColorAt(current, now - cycleStartMs - BLACK_PHASE_MS, ...)`. The loop lets the saver catch up after a long stall, such as the machine waking from sleep.
 - **V-16** The animation MUST NOT reset, jump, or re-roll when the window is repainted for other reasons. Only the rule in V-15 advances the cycle.
 - **V-17** No floating-point math and no `<cmath>` are needed. Do not use `M_PI`.
 
@@ -110,11 +111,13 @@ struct Cycle {
 
 `ColorAt` MUST pass **both** tables below exactly. The first uses equal durations, which is easy to reason about. It can't tell a fade duration from a hold duration, so it passes code that mixes them up. The second uses a different duration for every segment and catches that mistake.
 
+The first column is the `msIntoColors` argument (V-14), not time into the cycle. The last two rows of each table are past the end of the fades; `ColorAt` must still return black there.
+
 #### 3.4.1 Equal durations
 
-With every fade and hold set to exactly 4000 ms, the cycle length is 90 000 ms, and `ColorAt` MUST return exactly:
+With every fade and hold set to exactly 4000 ms, the cycle length is 90 000 ms (30 000 ms of black phase, then 60 000 ms of fades and holds), and `ColorAt` MUST return exactly:
 
-| msIntoCycle | Segment | R | G | B |
+| msIntoColors | Segment | R | G | B |
 |---:|---|---:|---:|---:|
 | 0 | fade black → red, start | 0 | 0 | 0 |
 | 2000 | fade black → red, middle | 128 | 0 | 0 |
@@ -133,14 +136,14 @@ With every fade and hold set to exactly 4000 ms, the cycle length is 90 000 ms, 
 | 50000 | fade purple → white, middle | 192 | 128 | 192 |
 | 52000 | hold white | 255 | 255 | 255 |
 | 58000 | fade white → black, middle | 128 | 128 | 128 |
-| 60000 | black phase, start | 0 | 0 | 0 |
-| 89999 | black phase, last ms | 0 | 0 | 0 |
+| 60000 | past the fades | 0 | 0 | 0 |
+| 89999 | past the fades | 0 | 0 | 0 |
 
 #### 3.4.2 Unequal durations
 
 Set `fadeMs[i] = 3000 + 100 * i` (3000, 3100, … 3700) and `holdMs[i] = 5000 - 100 * i` (5000, 4900, … 4400). The cycle length is 89 700 ms, and `ColorAt` MUST return exactly:
 
-| msIntoCycle | Segment | R | G | B |
+| msIntoColors | Segment | R | G | B |
 |---:|---|---:|---:|---:|
 | 1500 | fade black → red, middle | 128 | 0 | 0 |
 | 3000 | hold red, first ms | 255 | 0 | 0 |
@@ -164,8 +167,8 @@ Set `fadeMs[i] = 3000 + 100 * i` (3000, 3100, … 3700) and `holdMs[i] = 5000 - 
 | 51600 | hold white, first ms | 255 | 255 | 255 |
 | 55999 | hold white, last ms | 255 | 255 | 255 |
 | 57850 | fade white → black, middle | 128 | 128 | 128 |
-| 59700 | black phase, start | 0 | 0 | 0 |
-| 89699 | black phase, last ms | 0 | 0 | 0 |
+| 59700 | past the fades | 0 | 0 | 0 |
+| 89699 | past the fades | 0 | 0 | 0 |
 
 ### 3.5 Frame pacing
 
@@ -383,7 +386,7 @@ Notes:
 
 ## 8. README rewrite
 
-Replace the "How It Works" section, which describes the old stepped-color and black-phase cycle, with a description of section 3: fades through black, red, green, blue, yellow, cyan, purple, white and back to black, with each fade and each hold lasting a random 3–5 seconds, then 30 seconds of black before the next cycle. Also:
+Replace the "How It Works" section, which describes the old stepped-color and black-phase cycle, with a description of section 3: fades through black, red, green, blue, yellow, cyan, purple, white and back to black, with each fade and each hold lasting a random 3–5 seconds, with 30 seconds of black at the start of every cycle. Also:
 
 - Update the build commands and flags to match section 7.
 - Command-line table: add `/c:<hwnd>` and `/p <hwnd>`, and describe preview correctly (it renders the animation into the settings dialog's preview, not the config dialog).
@@ -421,7 +424,7 @@ Field reports against the installed build. Each one is a requirement: the implem
 
 **Expected behavior.** Clicking **Preview** shows the full-screen saver. From the first visible frame, the whole screen (every monitor) is a solid fill of the current cycle color, and the fill follows the cycle of section 3 (fades, holds, black phase) until the user moves the mouse or presses a key. Every step of the cycle is drawn into the full-screen window as a fill; nothing else is ever visible.
 
-**Black is not automatically a failure.** Under the section 3 cycle the first frame is black (V-5), but it starts brightening toward red right away and is fully red within 3–5 s. The black phase (30 s) is also correct. The bug is a black screen that *stays* black, or black at any moment section 3.2 doesn't call for it.
+**Black is not automatically a failure.** Under the section 3 cycle the first 30 s are the black phase (V-5), and the fade to red starts after it, fully red within 3–5 s more. The bug is a black screen that *stays* black, or black at any moment section 3.2 doesn't call for it.
 
 **Clarification.** The **Preview** *button* launches the saver with `/s`, i.e. full-screen mode (section 5). It is different from the small monitor image in the dialog, which uses `/p <hwnd>` (section 6.1). Both MUST animate; this report concerns the button.
 
@@ -436,8 +439,8 @@ Field reports against the installed build. Each one is a requirement: the implem
 
 **Acceptance:**
 
-- BR-1.a Install the build, open Screen Saver Settings, select Ghost Saver, click **Preview**, then take your hand off the mouse. The desktop is never visible. The screen is covered by the saver at once, and within 2 seconds it is visibly turning red.
-- BR-1.b Within 75 seconds the screen shows red, green, blue, yellow, cyan, purple and white in that order, fading between them and holding each one. It then fades to black, stays black for about 30 seconds, and starts again with a fade to red.
+- BR-1.a Install the build, open Screen Saver Settings, select Ghost Saver, click **Preview**, then take your hand off the mouse. The desktop is never visible. The screen is covered by the saver at once, and within 32 seconds (the 30 s black phase, then 2 s of fade) it is visibly turning red.
+- BR-1.b Within 105 seconds the screen shows red, green, blue, yellow, cyan, purple and white in that order, fading between them and holding each one. It then fades to black, stays black for about 30 seconds, and starts again with a fade to red.
 - BR-1.c With two monitors, both show the same changing fill.
 - BR-1.d A key press or real mouse movement ends the preview and returns to the Screen Saver Settings dialog.
 - BR-1.e The small preview monitor inside the dialog animates the same cycle before and after clicking **Preview**.
@@ -492,8 +495,8 @@ The implementation is done when every check passes. Run them in order.
 
 **Full screen (`ghost-saver.scr /s`)**
 
-5. The screen follows section 3: starts black, fades to red, then green, blue, yellow, cyan, purple, white, black. Fades are smooth, holds are steady, and nothing flickers or jumps.
-5a. With a stopwatch over two full cycles: every fade and every hold lasts roughly 3–5 s, the black phase lasts about 30 s, the cycle restarts with a fade to red, and the two cycles' timings are not identical.
+5. The screen follows section 3: stays black for 30 s, then fades to red, then green, blue, yellow, cyan, purple, white, black. Fades are smooth, holds are steady, and nothing flickers or jumps.
+5a. With a stopwatch over two full cycles: every fade and every hold lasts roughly 3–5 s, the black phase lasts about 30 s and opens each cycle, the fade to red follows it, and the two cycles' timings are not identical.
 6. With two or more monitors attached, every monitor shows the color, including one placed to the left of or above the primary (negative coordinates).
 7. The cursor is not visible.
 8. The saver keeps running for 30 seconds while the mouse sits untouched.

@@ -407,17 +407,16 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         HDC hdc = BeginPaint(hwnd, &ps);
         AdvanceCycle();
         ULONGLONG msIntoCycle = GetTickCount64() - g_cycleStartMs;
-        BYTE r, g, b;
-        ColorAt(g_cycle, msIntoCycle, r, g, b);
 
         RECT rc;
         GetClientRect(hwnd, &rc);
         int w = rc.right - rc.left;
         int h = rc.bottom - rc.top;
 
-        // Check if we're in the black phase
-        ULONGLONG cycleLen = CycleLength(g_cycle);
-        bool inBlackPhase = (msIntoCycle >= cycleLen - BLACK_PHASE_MS);
+        // The black phase (fireworks) opens each cycle; the color fades follow it
+        bool inBlackPhase = (msIntoCycle < BLACK_PHASE_MS);
+        BYTE r = 0, g = 0, b = 0;
+        if (!inBlackPhase) ColorAt(g_cycle, msIntoCycle - BLACK_PHASE_MS, r, g, b);
 
         if (inBlackPhase && !g_preview) {
             ULONGLONG now = GetTickCount64();

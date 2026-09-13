@@ -8,8 +8,8 @@ Source: https://github.com/dmongrel/ghost-saver
 
 The screensaver follows a repeating cycle:
 
-1. **Color Cycle (45–75 seconds)**: Fades the whole screen through black, red, green, blue, yellow, cyan, purple and white, then back to black. Each fade and each hold lasts a random 3–5 seconds.
-2. **Black Phase with Fireworks (30 seconds)**: The screen stays black while a fireworks show plays over it (see below).
+1. **Black Phase with Fireworks (30 seconds)**: The screen starts black while a fireworks show plays over it (see below).
+2. **Color Cycle (45–75 seconds)**: Fades the whole screen through black, red, green, blue, yellow, cyan, purple and white, then back to black. Each fade and each hold lasts a random 3–5 seconds.
 3. **Repeat**: A full cycle takes 75–105 seconds and repeats until any keyboard or mouse input is detected.
 
 ## Fireworks Mode
