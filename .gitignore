@@ -4,6 +4,7 @@
 *.o
 *.obj
 *.res
+build/
 
 # IDE files
 .vs/

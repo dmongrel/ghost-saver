@@ -4,24 +4,33 @@
 
 CXX      = g++
 WINDRES  = windres
-CXXFLAGS = -std=c++11 -Wall -Wextra -O2 -DUNICODE -D_UNICODE
-LDFLAGS  = -mwindows -static
+CXXFLAGS = -std=c++11 -Wall -Wextra -O2 -municode -DUNICODE -D_UNICODE
+LDFLAGS  = -mwindows -municode -static
 LDLIBS   = -lgdi32 -lshell32
 TARGET   = ghost-saver.scr
 RES      = ghost-saver.res
+BUILDTMP = build/tmp
+
+# Keep compiler/linker temp files inside the project; don't depend on TMP/TEMP.
+export TMP    := $(abspath $(BUILDTMP))
+export TEMP   := $(TMP)
+export TMPDIR := $(TMP)
 
 .PHONY: all clean install
 
 all: $(TARGET)
 
-$(RES): ghost-saver.rc ghost-saver.manifest
-	$(WINDRES) --preprocessor="cat" ghost-saver.rc -O coff -o $@
+$(BUILDTMP):
+	mkdir -p $@
 
-$(TARGET): main.cpp $(RES)
+$(RES): ghost-saver.rc ghost-saver.manifest | $(BUILDTMP)
+	$(WINDRES) ghost-saver.rc -O coff -o $@
+
+$(TARGET): main.cpp $(RES) | $(BUILDTMP)
 	$(CXX) $(CXXFLAGS) -o $@ main.cpp $(RES) $(LDFLAGS) $(LDLIBS)
 
 clean:
-	rm -f $(TARGET) $(RES)
+	rm -rf $(TARGET) $(RES) build
 
 install: $(TARGET)
 	cp $(TARGET) "$(SYSTEMROOT)/System32/"

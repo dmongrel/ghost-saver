@@ -34,7 +34,7 @@ make install
 
 ```bash
 windres ghost-saver.rc -O coff -o ghost-saver.res
-g++ -std=c++11 -Wall -Wextra -O2 -DUNICODE -D_UNICODE -o ghost-saver.scr main.cpp ghost-saver.res -mwindows -static -lgdi32 -lshell32
+g++ -std=c++11 -Wall -Wextra -O2 -municode -DUNICODE -D_UNICODE -o ghost-saver.scr main.cpp ghost-saver.res -mwindows -municode -static -lgdi32 -lshell32
 ```
 
 ## Installation

@@ -1,3 +1,5 @@
+#include <windows.h>
+
 STRINGTABLE
 BEGIN
     1 "Ghost Saver"

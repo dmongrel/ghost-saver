@@ -1,4 +1,7 @@
 #include <windows.h>
+#include <windowsx.h>
+#include <cstdlib>
+#include <cwctype>
 
 static const struct { BYTE r, g, b; } STOPS[9] = {
     {  0,   0,   0 }, // black
@@ -34,83 +37,23 @@ static ULONGLONG CycleLength(const Cycle& c) {
 }
 
 static void ColorAt(const Cycle& c, ULONGLONG ms, BYTE& r, BYTE& g, BYTE& b) {
-    ULONGLONG t = ms;
-    // fade black->red
-    if (t < c.fadeMs[0]) {
-        int D = (int)c.fadeMs[0], ti = (int)t;
-        r = (BYTE)((0 * (D - ti) + 255 * ti + D / 2) / D);
-        g = 0; b = 0; return;
-    } t -= c.fadeMs[0];
-    // hold red
-    if (t < c.holdMs[0]) { r = 255; g = 0; b = 0; return; } t -= c.holdMs[0];
-    // fade red->green
-    if (t < c.fadeMs[1]) {
-        int D = (int)c.fadeMs[1], ti = (int)t;
-        r = (BYTE)((255 * (D - ti) + 0 * ti + D / 2) / D);
-        g = (BYTE)((0 * (D - ti) + 255 * ti + D / 2) / D);
-        b = 0; return;
-    } t -= c.fadeMs[1];
-    // hold green
-    if (t < c.holdMs[1]) { r = 0; g = 255; b = 0; return; } t -= c.holdMs[1];
-    // fade green->blue
-    if (t < c.fadeMs[2]) {
-        int D = (int)c.fadeMs[2], ti = (int)t;
-        r = 0;
-        g = (BYTE)((255 * (D - ti) + 0 * ti + D / 2) / D);
-        b = (BYTE)((0 * (D - ti) + 255 * ti + D / 2) / D);
-        return;
-    } t -= c.fadeMs[2];
-    // hold blue
-    if (t < c.holdMs[2]) { r = 0; g = 0; b = 255; return; } t -= c.holdMs[2];
-    // fade blue->yellow
-    if (t < c.fadeMs[3]) {
-        int D = (int)c.fadeMs[3], ti = (int)t;
-        r = (BYTE)((0 * (D - ti) + 255 * ti + D / 2) / D);
-        g = (BYTE)((0 * (D - ti) + 255 * ti + D / 2) / D);
-        b = (BYTE)((255 * (D - ti) + 0 * ti + D / 2) / D);
-        return;
-    } t -= c.fadeMs[3];
-    // hold yellow
-    if (t < c.holdMs[3]) { r = 255; g = 255; b = 0; return; } t -= c.fadeMs[3];
-    // fade yellow->cyan
-    if (t < c.fadeMs[4]) {
-        int D = (int)c.fadeMs[4], ti = (int)t;
-        r = (BYTE)((255 * (D - ti) + 0 * ti + D / 2) / D);
-        g = 255;
-        b = (BYTE)((0 * (D - ti) + 255 * ti + D / 2) / D);
-        return;
-    } t -= c.fadeMs[4];
-    // hold cyan
-    if (t < c.holdMs[4]) { r = 0; g = 255; b = 255; return; } t -= c.fadeMs[4];
-    // fade cyan->purple
-    if (t < c.fadeMs[5]) {
-        int D = (int)c.fadeMs[5], ti = (int)t;
-        r = (BYTE)((0 * (D - ti) + 128 * ti + D / 2) / D);
-        g = (BYTE)((255 * (D - ti) + 0 * ti + D / 2) / D);
-        b = (BYTE)((255 * (D - ti) + 128 * ti + D / 2) / D);
-        return;
-    } t -= c.fadeMs[5];
-    // hold purple
-    if (t < c.holdMs[5]) { r = 128; g = 0; b = 128; return; } t -= c.fadeMs[5];
-    // fade purple->white
-    if (t < c.fadeMs[6]) {
-        int D = (int)c.fadeMs[6], ti = (int)t;
-        r = (BYTE)((128 * (D - ti) + 255 * ti + D / 2) / D);
-        g = (BYTE)((0 * (D - ti) + 255 * ti + D / 2) / D);
-        b = (BYTE)((128 * (D - ti) + 255 * ti + D / 2) / D);
-        return;
-    } t -= c.fadeMs[6];
-    // hold white
-    if (t < c.holdMs[6]) { r = 255; g = 255; b = 255; return; } t -= c.fadeMs[6];
-    // fade white->black
-    if (t < c.fadeMs[7]) {
-        int D = (int)c.fadeMs[7], ti = (int)t;
-        r = (BYTE)((255 * (D - ti) + 0 * ti + D / 2) / D);
-        g = (BYTE)((255 * (D - ti) + 0 * ti + D / 2) / D);
-        b = (BYTE)((255 * (D - ti) + 0 * ti + D / 2) / D);
-        return;
-    } t -= c.fadeMs[7];
-    // black phase
+    for (int i = 0; i < 8; i++) {
+        const auto& A = STOPS[i];
+        const auto& B = STOPS[i + 1];
+        if (ms < c.fadeMs[i]) {
+            ULONGLONG D = c.fadeMs[i], t = ms;
+            r = (BYTE)((A.r * (D - t) + B.r * t + D / 2) / D);
+            g = (BYTE)((A.g * (D - t) + B.g * t + D / 2) / D);
+            b = (BYTE)((A.b * (D - t) + B.b * t + D / 2) / D);
+            return;
+        }
+        ms -= c.fadeMs[i];
+        if (i < 7) {
+            if (ms < c.holdMs[i]) { r = B.r; g = B.g; b = B.b; return; }
+            ms -= c.holdMs[i];
+        }
+    }
+    // black phase (or past the end of the cycle)
     r = 0; g = 0; b = 0;
 }
 
@@ -152,20 +95,27 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         SetCursor(nullptr);
         return TRUE;
     case WM_LBUTTONDOWN: case WM_RBUTTONDOWN: case WM_MBUTTONDOWN:
-    case WM_MOUSEWHEEL:
-        if (!g_preview) DestroyWindow(hwnd);
-        return 0;
-    case WM_MOUSEMOVE:
-        if (!g_preview) DestroyWindow(hwnd);
-        return 0;
+    case WM_XBUTTONDOWN: case WM_MOUSEWHEEL: case WM_MOUSEHWHEEL:
     case WM_KEYDOWN: case WM_SYSKEYDOWN:
-        if (!g_preview) DestroyWindow(hwnd);
+        if (g_preview) return DefWindowProc(hwnd, msg, wp, lp);
+        DestroyWindow(hwnd);
         return 0;
+    case WM_MOUSEMOVE: {
+        if (g_preview) return DefWindowProc(hwnd, msg, wp, lp);
+        // Windows sends a WM_MOUSEMOVE when the window appears; only real movement exits.
+        static bool haveStart = false;
+        static int startX, startY;
+        int x = GET_X_LPARAM(lp), y = GET_Y_LPARAM(lp);
+        if (!haveStart) { haveStart = true; startX = x; startY = y; return 0; }
+        if (abs(x - startX) > 4 || abs(y - startY) > 4) DestroyWindow(hwnd);
+        return 0;
+    }
     case WM_ACTIVATEAPP:
-        if (!g_preview && !wp) DestroyWindow(hwnd);
+        if (g_preview) return DefWindowProc(hwnd, msg, wp, lp);
+        if (!wp) DestroyWindow(hwnd);
         return 0;
     case WM_SYSCOMMAND:
-        if (wp == SC_SCREENSAVE) return 0;
+        if (!g_preview && (wp & 0xFFF0) == SC_SCREENSAVE) return 0;
         return DefWindowProc(hwnd, msg, wp, lp);
     case WM_DESTROY:
         KillTimer(hwnd, 1);
@@ -197,17 +147,18 @@ static int RunFullScreen() {
     RollCycle(g_cycle);
     g_cycleStartMs = GetTickCount64();
 
+    SetTimer(hwnd, 1, 33, nullptr);
     ShowWindow(hwnd, SW_SHOW);
     UpdateWindow(hwnd);
     SetForegroundWindow(hwnd);
-    SetTimer(hwnd, 1, 33, nullptr);
 
     MSG msg;
     while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }
-    return (int)msg.wParam;
+    UnregisterClassW(L"GhostSaverClass", wc.hInstance);
+    return 0;
 }
 
 static int RunPreview(HWND hparent) {
@@ -220,22 +171,27 @@ static int RunPreview(HWND hparent) {
     wc.style = CS_HREDRAW | CS_VREDRAW;
     RegisterClassW(&wc);
 
+    RECT prc;
+    GetClientRect(hparent, &prc);
     HWND hwnd = CreateWindowExW(0, L"GhostSaverClass", nullptr,
-        WS_CHILD | WS_VISIBLE,
-        0, 0, 320, 240,
+        WS_CHILD,
+        0, 0, prc.right - prc.left, prc.bottom - prc.top,
         hparent, nullptr, GetModuleHandle(nullptr), nullptr);
 
     RollCycle(g_cycle);
     g_cycleStartMs = GetTickCount64();
 
     SetTimer(hwnd, 1, 33, nullptr);
+    ShowWindow(hwnd, SW_SHOW);
+    UpdateWindow(hwnd);
 
     MSG msg;
     while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }
-    return (int)msg.wParam;
+    UnregisterClassW(L"GhostSaverClass", wc.hInstance);
+    return 0;
 }
 
 static int RunConfigure(HWND hparent) {
