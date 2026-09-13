@@ -13,6 +13,7 @@ Revisions:
 - 2026-09-12: initial spec.
 - 2026-09-12: BR-1 (preview shows background then black) added.
 - 2026-09-12: color cycle replaced. The sine sweep is gone. The saver now steps through a fixed list of colors with random fade and hold times, then rests on black for 30 s.
+- 2026-09-12: purple changed from magenta (255, 0, 255) to (128, 0, 128).
 
 ---
 
@@ -44,11 +45,11 @@ The saver visits these nine stops in this order, every cycle:
 | 3 | blue | 0 | 0 | 255 |
 | 4 | yellow | 255 | 255 | 0 |
 | 5 | cyan | 0 | 255 | 255 |
-| 6 | purple | 255 | 0 | 255 |
+| 6 | purple | 128 | 0 | 128 |
 | 7 | white | 255 | 255 | 255 |
 | 8 | black | 0 | 0 | 0 |
 
-- **V-1** The stops MUST be exactly the table above, as a `static const` array. "Purple" means full magenta (255, 0, 255), the secondary color between red and blue, so every sub-pixel is driven fully on and fully off during a cycle.
+- **V-1** The stops MUST be exactly the table above, as a `static const` array. "Purple" means (128, 0, 128), the standard web purple. It is not magenta (255, 0, 255). Every sub-pixel is still driven fully on and fully off during a cycle by the other stops.
 
 ### 3.2 Cycle structure
 
@@ -120,9 +121,9 @@ With every fade and hold set to exactly 4000 ms, the cycle length is 90 000 ms, 
 | 28000 | hold yellow | 255 | 255 | 0 |
 | 34000 | fade yellow → cyan, middle | 128 | 255 | 128 |
 | 36000 | hold cyan | 0 | 255 | 255 |
-| 42000 | fade cyan → purple, middle | 128 | 128 | 255 |
-| 44000 | hold purple | 255 | 0 | 255 |
-| 50000 | fade purple → white, middle | 255 | 128 | 255 |
+| 42000 | fade cyan → purple, middle | 64 | 128 | 192 |
+| 44000 | hold purple | 128 | 0 | 128 |
+| 50000 | fade purple → white, middle | 192 | 128 | 192 |
 | 52000 | hold white | 255 | 255 | 255 |
 | 58000 | fade white → black, middle | 128 | 128 | 128 |
 | 60000 | black phase, start | 0 | 0 | 0 |
