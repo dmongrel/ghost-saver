@@ -15,6 +15,7 @@ Revisions:
 - 2026-09-12: color cycle replaced. The sine sweep is gone. The saver now steps through a fixed list of colors with random fade and hold times, then rests on black for 30 s.
 - 2026-09-12: purple changed from magenta (255, 0, 255) to (128, 0, 128).
 - 2026-09-12: findings from the first local build folded in (section 9b). The Makefile now uses a temp dir inside the project and adds `-municode`, `.rc` files must keep their `#include`, `ColorAt` must be a loop, and a second reference table uses unequal durations.
+- 2026-09-12: BR-1 marked resolved (fixed in `73d8ac8`, confirmed by the owner).
 
 ---
 
@@ -413,6 +414,8 @@ Replace the "How It Works" section, which describes the old stepped-color and bl
 Field reports against the installed build. Each one is a requirement: the implementation is not done until its acceptance checks pass.
 
 ### BR-1: Preview shows background then black, no color cycling
+
+**Status: RESOLVED** (2026-09-12). Fixed in commit `73d8ac8` and installed to `System32`. The owner confirmed that preview works. The acceptance checks below stay as regression tests for future builds.
 
 **Reported behavior.** With ghost-saver installed, clicking **Preview** in Screen Saver Settings makes the screen "flip": the desktop background shows briefly, then the screen goes black. No color cycling happens.
 
