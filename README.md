@@ -2,6 +2,8 @@
 
 A Windows screen saver designed to remove ghosting/burn-in artifacts from monitors by cycling through solid colors.
 
+Source: https://github.com/dmongrel/ghost-saver
+
 ## How It Works
 
 The screensaver follows a repeating cycle:
