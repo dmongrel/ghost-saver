@@ -52,6 +52,10 @@ g++ -std=c++11 -Wall -Wextra -O2 -municode -DUNICODE -D_UNICODE -o ghost-saver.s
 
 ## Installation
 
+The easiest way is to download `ghost-saver.scr` from the [latest release](https://github.com/dmongrel/ghost-saver/releases/latest), right-click it and choose **Install**. It is a single self-contained file.
+
+To build it yourself instead:
+
 1. Build the project: `make`
 2. Copy to Windows directory from an elevated prompt:
    ```cmd
@@ -96,4 +100,4 @@ Arguments are case-insensitive and accept both `/` and `-` as the prefix.
 
 ## License
 
-Public Domain - Use freely for any purpose.
+ghost-saver is released under the [MIT License](LICENSE).
